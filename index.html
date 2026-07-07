@@ -346,7 +346,7 @@
     // GITHUB PAGES CONFIGURATION
     // ==========================================
     // REPLACE THIS URL WITH YOUR DEPLOYED APPS SCRIPT WEB APP URL
-    const GAS_WEB_APP_URL = 'https://yahrmbxtpryvyrfkitfq.supabase.co/functions/v1/api';
+    const GAS_WEB_APP_URL = 'https://yahrmbxtpryvyrfkitfq.supabase.co/functions/v1/dynamic-processor';
 
     /**
      * Replaces google.script.run for GitHub Pages.
@@ -633,9 +633,15 @@
         <div class="card" style="margin-bottom:24px; text-align:center; padding:32px 24px; background:linear-gradient(135deg, #f8fbff, #ffffff); border-color:var(--brand); box-shadow: 0 4px 12px rgba(21, 94, 239, 0.05);">
            <h2 style="margin:0; font-size:22px; font-weight:900; color:var(--brand2); letter-spacing: -0.5px;">University of Raparin, College of Basic Education, English Language Department</h2>
            <p style="margin:8px 0 0 0; color:var(--muted); font-weight:600; text-transform: uppercase; letter-spacing: 1px; font-size: 13px;">Student Cohort Directory</p>
-        </div>
-        
-        <div class="card" style="padding: 0; overflow: hidden;">
+
+</div>
+
+<div class="row" style="justify-content:flex-end; gap:10px; margin-bottom:16px;">
+<button class="btn p" onclick="openAddStudentModal()">+ Add Student(s)</button>
+<button class="btn s" onclick="openManageStagesModal()">Manage Stages</button>
+</div>
+
+<div class="card" style="padding: 0; overflow: hidden;">
           <div class="row" style="justify-content:space-between; padding: 16px 20px; border-bottom:1px solid var(--line); background: #fbfdff;">
             <div class="tabs" style="margin:0; padding:0; border:none; box-shadow:none; background:transparent;">
               <button class="tab sub-tab a" onclick="switchStgTab('1', this)">First Year</button>
@@ -889,7 +895,7 @@ for(let s=1;s<=4;s++){
   stageHtml += `</tbody></table></div></div>`;
   stageHtml += `</div></div>`;
 
-  id('tab-lists').innerHTML = header + list1 + list2 + list3 + stageHtml;
+  id('tab-lists').innerHTML = header + list1 + list2 + list3 + stageHtml + buildList6Section(l);
 }
 
 function loadPostponements(){
@@ -977,59 +983,96 @@ function exportListToExcel(id,title){
   </body></html>`;
   const blob=new Blob([html],{type:'application/vnd.ms-excel'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=title+'.xls'; a.click();
 }
-function exportListToWord(id,title){
-  const el=document.getElementById(id); if(!el) return;
+function buildList6Section(l){
+  const raw = l.list6||[];
+  window.__LIST6_RAW = raw;
+  window.__OVERLOADED_NAMES = l.overloadedNames||[];
+  const stages = [...new Set(raw.map(r=>String(r.stage||'').trim()).filter(Boolean))].sort();
+  const subjects = [...new Set(raw.map(r=>r.subject).filter(Boolean))].sort();
+  const years = [...new Set(raw.flatMap(r=>String(r.yearsFailed||'').split(',').map(x=>x.trim()).filter(Boolean)))].sort();
+  const yearOpts = years.map(y=>'<option value="'+escapeHtml(y)+'">'+escapeHtml(y)+'</option>').join('');
+  const stageOpts = stages.map(s=>'<option value="'+escapeHtml(s)+'">Stage '+escapeHtml(s)+'</option>').join('');
+  const subjectOpts = subjects.map(s=>'<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>').join('');
+  const names = window.__OVERLOADED_NAMES;
+  const banner = names.length ? '<div style="padding:14px 18px;background:#fef3f2;border:1px solid #fecdca;border-radius:12px;color:#b42318;font-weight:700;margin-bottom:16px;">⚠ Overloaded Students: '+names.map(n=>escapeHtml(n)).join(', ')+'</div>' : '';
+  return '<div class="card" style="margin-top:24px"><div style="padding:18px;border-bottom:1px solid var(--line)"><h3 style="margin:0 0 12px">List 6: Students with Failing Subjects</h3>'+
+  '<div class="row" style="gap:8px;flex-wrap:wrap;align-items:end">'+
+  '<div class="grow"><label class="small">Year</label><select id="l6Year"><option value="">All Years</option>'+yearOpts+'</select></div>'+
+  '<div class="grow"><label class="small">Stage</label><select id="l6Stage"><option value="">All Stages</option>'+stageOpts+'</select></div>'+
+  '<div class="grow"><label class="small">Subject</label><select id="l6Subject"><option value="">All Subjects</option>'+subjectOpts+'</select></div>'+
+  '<button class="btn p" onclick="applyList6Filter()">Filter</button>'+
+  '<button class="btn s" onclick="resetList6Filter()">Reset</button>'+
+  '<button class="btn s" onclick="exportList6ToExcel()">Excel</button>'+
+  '<button class="btn s" onclick="exportList6ToWord()">Word</button>'+
+  '</div></div>'+
+  '<div style="padding:18px">'+banner+'<div id="list6TableWrap">'+buildFailDetailTable(raw)+'</div></div></div>';
+}
+
+function buildFailDetailTable(arr){
+  if(!arr||!arr.length) return '<div style="padding:20px;text-align:center;color:var(--muted)">No records</div>';
+  let html = '<div class="table-wrap" id="tbl-l6"><table><thead><tr><th style="width:50px">No</th><th>Name</th><th>Subject</th><th style="width:80px">Stage</th><th style="width:90px">Pre-Final</th><th style="width:90px">Note</th></tr></thead><tbody>';
+  let i=0, rowNum=0;
+  while(i<arr.length){
+    let j=i;
+    while(j<arr.length && arr[j].studentCode===arr[i].studentCode && String(arr[j].stage)===String(arr[i].stage)) j++;
+    const run = arr.slice(i,j);
+    const merge = run.length===4;
+    run.forEach(function(r,k){
+      rowNum++;
+      const style = r.isOverloaded ? 'style="color:#b42318;font-weight:700"' : '';
+      html += '<tr '+style+'>';
+      html += '<td>'+rowNum+'</td>';
+      if(merge){ if(k===0) html += '<td rowspan="'+run.length+'">'+escapeHtml(r.name)+'</td>'; }
+      else { html += '<td>'+escapeHtml(r.name)+'</td>'; }
+      html += '<td>'+escapeHtml(r.subject)+'</td><td>'+escapeHtml(r.stage)+'</td><td>'+escapeHtml(r.prefinal)+'</td><td>'+escapeHtml(r.note)+'</td>';
+      html += '</tr>';
+    });
+    i=j;
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function applyList6Filter(){
+  const y = id('l6Year').value, s = id('l6Stage').value, sub = id('l6Subject').value;
+  const data = (window.__LIST6_RAW||[]).filter(function(r){
+    if(y && !String(r.yearsFailed||'').includes(y)) return false;
+    if(s && String(r.stage)!==String(s)) return false;
+    if(sub && r.subject!==sub) return false;
+    return true;
+  });
+  id('list6TableWrap').innerHTML = buildFailDetailTable(data);
+}
+
+function resetList6Filter(){
+  id('l6Year').value=''; id('l6Stage').value=''; id('l6Subject').value='';
+  id('list6TableWrap').innerHTML = buildFailDetailTable(window.__LIST6_RAW||[]);
+}
+
+function exportList6ToExcel(){
+  const el=document.getElementById('tbl-l6'); if(!el) return;
   const year = window.__ACADEMIC_YEAR || '';
-  const niceTitle = title.replace(/_/g,' ');
-  const html=`<html><head><meta charset=\"UTF-8\"><style>
-    @page{margin:1in}
-    body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0;color:#101828}
-  .header{border-bottom:3px solid #155eef;padding-bottom:12px;margin-bottom:18px}
-  .uni{font-size:22pt;font-weight:900;color:#0f3fb3;margin:0}
-  .dept{font-size:11pt;color:#475467;margin:4pt 0 0;font-weight:600;text-transform:uppercase}
-  .meta{margin-top:10pt;font-size:10pt;color:#344054}
-  .meta span{display:inline-block;background:#f2f4f7;padding:4pt 8pt;margin-right:8pt;border:1px solid #e4e7ec;border-radius:4pt}
-  .meta b{color:#000}
-  .title{margin:16pt 0 10pt;font-size:14pt;font-weight:800;color:#155eef}
-    table{border-collapse:collapse;width:100%;font-size:10.5pt}
-    th{background:#155eef;color:#fff;padding:8pt 6pt;text-align:left;border:1pt solid #0f3fb3}
-    td{padding:7pt 6pt;border:1pt solid #d0d5dd}
-    tr.overloaded td{color:#b42318!important;font-weight:700;background:none!important}
+  const names = window.__OVERLOADED_NAMES||[];
+  const overloadedBlock = names.length ? '<p style="color:#b42318;font-weight:bold;font-size:13px;">Overloaded Students: '+names.map(escapeHtml).join(', ')+'</p>' : '';
+  const html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"></head><body>'+
+  '<h2 style="color:#0f3fb3;">University of Raparin — College of Basic Education, English Language Department</h2>'+
+  '<h3 style="color:#155eef;">List 6: Students with Failing Subjects</h3>'+
+  '<p>Academic Year: '+year+' &nbsp; Generated: '+new Date().toLocaleString()+'</p>'+
+  overloadedBlock+el.outerHTML+'</body></html>';
+  const blob=new Blob([html],{type:'application/vnd.ms-excel'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='List6_FailingSubjects.xls'; a.click();
+}
 
-    /* Mobile optimizations */
-    @media (max-width:768px){
-      .wrap{padding:10px}
-      .g4{grid-template-columns:repeat(2,1fr)!important}
-      .g3{grid-template-columns:1fr!important}
-      .g2{grid-template-columns:1fr!important}
-      .search-hero{padding:20px}
-      .search-input-wrap input{font-size:16px; padding:16px}
-      .metric .v{font-size:28px}
-      .tabs{padding:8px; gap:6px}
-      .tab{padding:8px 12px; font-size:13px}
-      table{font-size:13px}
-      th,td{padding:10px 8px}
-      .modal-card{padding:16px; border-radius:16px}
-      .semester-head{flex-direction:column; align-items:flex-start; gap:8px}
-    }
-    /* Improve phone touch targets */
-    .btn{min-height:44px; touch-action:manipulation}
-    input,select,textarea{min-height:44px}
-
-  </style></head><body>
-  <div class=\"header\">
-    <p class=\"uni\">University of Raparin</p>
-    <p class=\"dept\">College of Basic Education — English Language Department</p>
-    <div class=\"meta\">
-      <span><b>List:</b> ${niceTitle}</span>
-      <span><b>Academic Year:</b> ${year}</span>
-      <span><b>Date:</b> ${new Date().toLocaleDateString()}</span>
-    </div>
-  </div>
-  <div class=\"title\">${niceTitle}</div>
-  ${el.outerHTML}
-  </body></html>`;
-  const blob=new Blob([html],{type:'application/msword'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=title.replace(/[^a-z0-9]/gi,'_')+'.doc'; a.click();
+function exportList6ToWord(){
+  const el=document.getElementById('tbl-l6'); if(!el) return;
+  const year = window.__ACADEMIC_YEAR || '';
+  const names = window.__OVERLOADED_NAMES||[];
+  const overloadedBlock = names.length ? '<p style="color:#b42318;font-weight:bold;font-size:12pt;">Overloaded Students: '+names.map(escapeHtml).join(', ')+'</p>' : '';
+  const html='<html><head><meta charset="UTF-8"><style>@page{margin:1in} table{border-collapse:collapse;width:100%;font-size:10.5pt} th{background:#155eef;color:#fff;padding:8pt 6pt;border:1pt solid #0f3fb3} td{padding:7pt 6pt;border:1pt solid #d0d5dd}</style></head><body>'+
+  '<h2 style="color:#0f3fb3;">University of Raparin — College of Basic Education, English Language Department</h2>'+
+  '<h3 style="color:#155eef;">List 6: Students with Failing Subjects</h3>'+
+  '<p>Academic Year: '+year+' &nbsp; Date: '+new Date().toLocaleDateString()+'</p>'+
+  overloadedBlock+el.outerHTML+'</body></html>';
+  const blob=new Blob([html],{type:'application/msword'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='List6_FailingSubjects.doc'; a.click();
 }
 
     function tableFrom(arr, keys){
@@ -1670,7 +1713,7 @@ function exportListToWord(id,title){
         return '<div>' +
           '<label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">' + label + '</label>' +
           '<select id="fy_' + y + '">' +
-            opt('', '-') + opt('Fail', 'Fail') + opt('Absent', 'Absent') + opt('Postponed', 'Postponed') + opt('Ongoing', 'Ongoing') +
+            opt('', '-') + opt('Fail', 'Fail') + opt('Absent', 'Absent') + opt('Postponed', 'Postponed') + opt('Ongoing', 'Ongoing') + opt('Retake From Scratch', 'Retake From Scratch') + opt('Retake Only Final Exam', 'Retake Only Final Exam') +
           '</select>' +
         '</div>';
       }).join('');
@@ -1716,8 +1759,8 @@ function exportListToWord(id,title){
       FAIL_TRACKER_YEARS.forEach(function(y){
         var el = id('fy_' + y);
         var v = el ? el.value : '';
-        if (v) payload['year_' + y] = v;
-      });
+        payload['year_' + y] = v;
+     });
 
       var action = st.isEdit ? 'editFailureRecord' : 'addFailureRecord';
       id('addFailStatus').textContent = 'Saving...';
@@ -1928,7 +1971,164 @@ ${names.slice(0,5).join(', ')}${names.length>5 ? '\n...and ' + (names.length-5) 
         })
         .catch(function(e){ alert('Failed'); });
     }
+    function openAddStudentModal(){
+  id('pmTitle').textContent = 'Add Student(s)';
+  id('pmBody').innerHTML =
+  '<div class="row" style="gap:10px;margin-bottom:16px;">'+
+  '<button class="btn p" id="asModeSingleBtn" onclick="setAddStudentMode(\'single\')">Add One</button>'+
+  '<button class="btn s" id="asModeBulkBtn" onclick="setAddStudentMode(\'bulk\')">Add Multiple (by names)</button>'+
+  '</div>'+
+  '<div id="asSingleWrap"><div class="grid g2" style="gap:14px;">'+
+  '<div><label class="small" style="font-weight:700">Unique Code</label><input id="asCode" placeholder="e.g. STU-1001"></div>'+
+  '<div><label class="small" style="font-weight:700">Kurdish Name</label><input id="asNameKu"></div>'+
+  '<div><label class="small" style="font-weight:700">English Name</label><input id="asNameEn"></div>'+
+  '<div><label class="small" style="font-weight:700">Stage</label><select id="asStage"><option value="1">Stage 1</option><option value="2">Stage 2</option><option value="3">Stage 3</option><option value="4">Stage 4</option></select></div>'+
+  '<div><label class="small" style="font-weight:700">Group</label><input id="asGroup"></div>'+
+  '<div><label class="small" style="font-weight:700">Admission Year</label><input id="asAdm" placeholder="e.g. 2025-2026"></div>'+
+  '<div><label class="small" style="font-weight:700">Email</label><input id="asEmail" type="email"></div>'+
+  '<div><label class="small" style="font-weight:700">Phone</label><input id="asPhone"></div>'+
+  '</div></div>'+
+  '<div id="asBulkWrap" class="hidden">'+
+  '<div class="grid g3" style="gap:14px;margin-bottom:14px;">'+
+  '<div><label class="small" style="font-weight:700">Stage (applies to all)</label><select id="asBulkStage"><option value="1">Stage 1</option><option value="2">Stage 2</option><option value="3">Stage 3</option><option value="4">Stage 4</option></select></div>'+
+  '<div><label class="small" style="font-weight:700">Group (applies to all)</label><input id="asBulkGroup"></div>'+
+  '<div><label class="small" style="font-weight:700">Admission Year (applies to all)</label><input id="asBulkAdm" placeholder="e.g. 2025-2026"></div>'+
+  '</div>'+
+  '<label class="small" style="font-weight:700">One student per line — format: Code, Kurdish Name, English Name (English optional)</label>'+
+  '<textarea id="asBulkNames" placeholder="1001, Name One, Name One EN\n1002, Name Two"></textarea>'+
+  '</div>'+
+  '<div class="row" style="justify-content:flex-end;margin-top:20px;gap:8px;">'+
+  '<button class="btn s" onclick="closeModal()">Cancel</button>'+
+  '<button class="btn p" onclick="saveAddStudent()">Save</button>'+
+  '</div>'+
+  '<div id="asStatus2" class="small" style="margin-top:10px;color:var(--muted)"></div>';
+  id('profileModal').classList.add('s');
+}
 
+function setAddStudentMode(mode){
+  id('asSingleWrap').classList.toggle('hidden', mode!=='single');
+  id('asBulkWrap').classList.toggle('hidden', mode!=='bulk');
+  id('asModeSingleBtn').className = 'btn ' + (mode==='single'?'p':'s');
+  id('asModeBulkBtn').className = 'btn ' + (mode==='bulk'?'p':'s');
+}
+
+function saveAddStudent(){
+  const bulkVisible = !id('asBulkWrap').classList.contains('hidden');
+  id('asStatus2').textContent = 'Saving...';
+  if(!bulkVisible){
+    const code = id('asCode').value.trim();
+    const nameKu = id('asNameKu').value.trim();
+    if(!code || !nameKu){ id('asStatus2').textContent = 'Unique Code and Kurdish Name are required.'; return; }
+    const payload = {
+      unique_code: code, name_kurdish: nameKu, name_english: id('asNameEn').value.trim(),
+      stage: 'Stage ' + id('asStage').value, group_name: id('asGroup').value.trim(),
+      admission_year: id('asAdm').value.trim(), email: id('asEmail').value.trim(),
+      phone: id('asPhone').value.trim(), status: 'Active'
+    };
+    callBackend('upsertStudent', { payload: payload, adminCode: state.adminCode })
+      .then(function(){ setStatus('Student added successfully.', true); closeModal(); bootstrap(); })
+      .catch(function(e){ id('asStatus2').textContent = e && e.message ? e.message : 'Save failed.'; });
+  } else {
+    const lines = id('asBulkNames').value.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+    if(!lines.length){ id('asStatus2').textContent = 'Enter at least one student line.'; return; }
+    const stage = 'Stage ' + id('asBulkStage').value;
+    const group = id('asBulkGroup').value.trim();
+    const adm = id('asBulkAdm').value.trim();
+    const payloads = lines.map(function(line){
+      const parts = line.split(',').map(function(p){return p.trim();});
+      return { unique_code: parts[0]||'', name_kurdish: parts[1]||'', name_english: parts[2]||'', stage: stage, group_name: group, admission_year: adm, status: 'Active' };
+    }).filter(function(p){ return p.unique_code && p.name_kurdish; });
+    if(!payloads.length){ id('asStatus2').textContent = 'No valid lines found. Use: Code, Kurdish Name, English Name'; return; }
+    let done = 0, failed = 0;
+    function next(){
+      if(done + failed >= payloads.length){
+        setStatus('Added ' + done + ' student(s).' + (failed? ' ' + failed + ' failed.' : ''), failed===0);
+        closeModal(); bootstrap();
+        return;
+      }
+      const p = payloads[done + failed];
+      callBackend('upsertStudent', { payload: p, adminCode: state.adminCode })
+        .then(function(){ done++; id('asStatus2').textContent = 'Saving... (' + (done+failed) + '/' + payloads.length + ')'; next(); })
+        .catch(function(){ failed++; next(); });
+    }
+    next();
+  }
+}
+
+function buildStageActionOptions(fromStage){
+  let opts = '';
+  for(let i=1;i<=4;i++){ if(String(i)!==String(fromStage)) opts += '<option value="'+i+'">Move to Stage '+i+'</option>'; }
+  if(String(fromStage)==='4') opts += '<option value="completed">Mark as Completed</option>';
+  opts += '<option value="clear">Remove Stage</option>';
+  return opts;
+}
+
+function openManageStagesModal(){
+  id('pmTitle').textContent = 'Manage Stages';
+  id('pmBody').innerHTML =
+  '<div class="grid g3" style="gap:14px;margin-bottom:14px;">'+
+  '<div><label class="small" style="font-weight:700">From Stage</label><select id="msFrom" onchange="loadStageStudents()"><option value="1">Stage 1</option><option value="2">Stage 2</option><option value="3">Stage 3</option><option value="4">Stage 4</option></select></div>'+
+  '<div><label class="small" style="font-weight:700">Action</label><select id="msAction">'+buildStageActionOptions('1')+'</select></div>'+
+  '<div style="align-self:end;"><button class="btn p" style="width:100%" onclick="applyStageChange()">Apply to Selected</button></div>'+
+  '</div>'+
+  '<div id="msStudentsWrap"><div class="small" style="padding:20px;text-align:center;color:var(--muted)">Loading students...</div></div>'+
+  '<div class="row" style="justify-content:flex-end;margin-top:16px;">'+
+  '<button class="btn s" onclick="closeModal()">Close</button>'+
+  '</div>'+
+  '<div id="msStatus" class="small" style="margin-top:10px;color:var(--muted)"></div>';
+  id('profileModal').classList.add('s');
+  loadStageStudents();
+}
+
+function toggleAllMsSel(cb){ document.querySelectorAll('.msSel').forEach(function(x){ x.checked = cb.checked; }); }
+
+function loadStageStudents(){
+  const stage = id('msFrom').value;
+  id('msAction').innerHTML = buildStageActionOptions(stage);
+  id('msStudentsWrap').innerHTML = '<div class="small" style="padding:20px;text-align:center;color:var(--muted)">Loading students...</div>';
+  callBackend('getStudentsForPromotion', { stage: 'Stage ' + stage })
+    .then(function(students){
+      if(!students || !students.length){ id('msStudentsWrap').innerHTML = '<div class="small" style="padding:20px;text-align:center;color:var(--muted)">No active students found in this stage.</div>'; return; }
+      let html = '<div style="max-height:360px;overflow:auto;"><table style="width:100%;"><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllMsSel(this)"></th><th>Name</th><th>Code</th><th>Group</th><th style="width:110px">Action</th></tr></thead><tbody>';
+      students.forEach(function(s){
+        html += '<tr><td><input type="checkbox" class="msSel" data-code="'+escapeHtml(s.code)+'"></td><td>'+escapeHtml(s.name)+'</td><td style="font-family:monospace;">'+escapeHtml(s.code)+'</td><td>'+escapeHtml(s.group)+'</td><td><button class="btn s" style="padding:4px 8px;font-size:12px;" data-code="'+escapeHtml(s.code)+'" onclick="applyStageChangeSingle(this.dataset.code)">Apply</button></td></tr>';
+      });
+      html += '</tbody></table></div>';
+      id('msStudentsWrap').innerHTML = html;
+    })
+    .catch(function(e){ id('msStudentsWrap').innerHTML = '<div class="small" style="color:var(--bad)">'+escapeHtml(e.message||'Failed to load.')+'</div>'; });
+}
+
+function stageActionPayload(action){
+  if(action==='completed') return { status: 'Completed' };
+  if(action==='clear') return { stage: null };
+  return { stage: 'Stage ' + action };
+}
+
+function applyStageChange(){
+  const codes = Array.from(document.querySelectorAll('.msSel:checked')).map(function(x){return x.dataset.code;});
+  if(!codes.length){ id('msStatus').textContent = 'Select at least one student.'; return; }
+  const extra = stageActionPayload(id('msAction').value);
+  id('msStatus').textContent = 'Updating...';
+  let done=0;
+  function next(){
+    if(done>=codes.length){ setStatus('Updated ' + done + ' student(s).', true); closeModal(); bootstrap(); return; }
+    const payload = Object.assign({ unique_code: codes[done] }, extra);
+    callBackend('upsertStudent', { payload: payload, adminCode: state.adminCode })
+      .then(function(){ done++; id('msStatus').textContent = 'Updating... (' + done + '/' + codes.length + ')'; next(); })
+      .catch(function(){ done++; next(); });
+  }
+  next();
+}
+
+function applyStageChangeSingle(code){
+  const extra = stageActionPayload(id('msAction').value);
+  const payload = Object.assign({ unique_code: code }, extra);
+  id('msStatus').textContent = 'Updating...';
+  callBackend('upsertStudent', { payload: payload, adminCode: state.adminCode })
+    .then(function(){ setStatus('Student updated.', true); loadStageStudents(); })
+    .catch(function(e){ id('msStatus').textContent = e && e.message ? e.message : 'Update failed.'; });
+} 
   
     // Auto-login on Enter
     document.addEventListener('DOMContentLoaded', function(){
